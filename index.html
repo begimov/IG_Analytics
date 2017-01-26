@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Embed API Demo</title>
+</head>
+<body>
+
+  <!-- Step 1: Create the containing elements. -->
+
+  <section id="auth-button"></section>
+  <section id="view-selector"></section>
+  <section id="timeline"></section>
+  <section id="breakdown-chart-container"></section>
+
+  <!-- Step 2: Load the library. -->
+
+  <script>
+  (function(w,d,s,g,js,fjs){
+    g=w.gapi||(w.gapi={});g.analytics={q:[],ready:function(cb){this.q.push(cb)}};
+    js=d.createElement(s);fjs=d.getElementsByTagName(s)[0];
+    js.src='https://apis.google.com/js/platform.js';
+    fjs.parentNode.insertBefore(js,fjs);js.onload=function(){g.load('analytics')};
+  }(window,document,'script'));
+  </script>
+
+  <script>
+  gapi.analytics.ready(function() {
+
+    // Step 3: Authorize the user.
+
+    var CLIENT_ID = '471467844972-dt0esmarekenoh0g6l3j3i6l7no3olab.apps.googleusercontent.com';
+
+    gapi.analytics.auth.authorize({
+      container: 'auth-button',
+      clientid: CLIENT_ID,
+    });
+
+    // Step 4: Create the view selector.
+
+    var viewSelector = new gapi.analytics.ViewSelector({
+      container: 'view-selector'
+    });
+
+    // Step 5: Create the timeline chart.
+
+    var mainChart = new gapi.analytics.googleCharts.DataChart({
+      reportType: 'ga',
+      query: {
+        'dimensions': 'ga:sourceMedium',
+        'metrics': 'ga:sessions,ga:bounceRate',
+        'start-date': '30daysAgo',
+        'end-date': 'yesterday',
+        'filters': 'ga:sourceMedium=@cpc',
+        'sort': '-ga:sessions',
+        'max-results': '5',
+      },
+      chart: {
+        type: 'TABLE',
+        container: 'timeline'
+      }
+    });
+
+    var breakdownChart = new gapi.analytics.googleCharts.DataChart({
+    query: {
+      'dimensions': 'ga:keyword',
+      'metrics': 'ga:sessions',
+      'start-date': '30daysAgo',
+      'end-date': 'yesterday',
+      'sort': '-ga:sessions',
+    },
+    chart: {
+      type: 'TABLE',
+      container: 'breakdown-chart-container',
+      options: {
+        width: '100%'
+      }
+    }
+  });
+
+    // Step 6: Hook up the components to work together.
+
+    gapi.analytics.auth.on('success', function(response) {
+      viewSelector.execute();
+    });
+
+  //   viewSelector.on('change', function(ids) {
+  //     var newIds = {
+  //       query: {
+  //         ids: ids
+  //       }
+  //     }
+  //     timeline.set(newIds).execute();
+  //   });
+  // });
+
+  /**
+   * Store a refernce to the row click listener variable so it can be
+   * removed later to prevent leaking memory when the chart instance is
+   * replaced.
+   */
+  var mainChartRowClickListener;
+
+
+  /**
+   * Update both charts whenever the selected view changes.
+   */
+  viewSelector.on('change', function(ids) {
+    var options = {query: {ids: ids}};
+
+    // Clean up any event listeners registered on the main chart before
+    // rendering a new one.
+    if (mainChartRowClickListener) {
+      google.visualization.events.removeListener(mainChartRowClickListener);
+    }
+
+    mainChart.set(options).execute();
+    breakdownChart.set(options);
+
+    // Only render the breakdown chart if a browser filter has been set.
+    if (breakdownChart.get().query.filters) breakdownChart.execute();
+  });
+
+
+  /**
+   * Each time the main chart is rendered, add an event listener to it so
+   * that when the user clicks on a row, the line chart is updated with
+   * the data from the browser in the clicked row.
+   */
+  mainChart.on('success', function(response) {
+
+    var chart = response.chart;
+    var dataTable = response.dataTable;
+
+    // Store a reference to this listener so it can be cleaned up later.
+    mainChartRowClickListener = google.visualization.events
+        .addListener(chart, 'select', function(event) {
+
+      // When you unselect a row, the "select" event still fires
+      // but the selection is empty. Ignore that case.
+      if (!chart.getSelection().length) return;
+
+      var row =  chart.getSelection()[0].row;
+      var browser =  dataTable.getValue(row, 0);
+      var options = {
+        query: {
+          filters: 'ga:sourceMedium==' + browser
+        },
+        chart: {
+          options: {
+            title: browser
+          }
+        }
+      };
+
+      breakdownChart.set(options).execute();
+    });
+  });
+  });
+
+  </script>
+</body>
+</html>
